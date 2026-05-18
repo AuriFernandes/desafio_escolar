@@ -22,10 +22,14 @@
         .btn-danger { background: var(--wrong); }
         .hud { display: flex; justify-content: space-between; font-weight: 800; color: #6b7280; font-size: 0.9rem; margin-bottom: 15px; }
         .option { background: #fff; border: 2px solid #e5e7eb; padding: 15px; border-radius: 12px; margin-bottom: 10px; cursor: pointer; font-weight: 700; text-align: left; transition: 0.2s; }
+        
+        /* Modificações Visuais de Seleção */
+        .option:hover:not(.disabled) { border-color: #a5b4fc; background: #f5f8ff; }
         .option.selected { border-color: var(--primary); background: #eef2ff; }
         .option.correct { border-color: var(--secondary); background: #ecfdf5; color: #065f46; }
         .option.wrong { border-color: var(--wrong); background: #fef2f2; color: #991b1b; }
         .option.disabled { pointer-events: none; opacity: 0.8; }
+        
         .chapter-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 10px 0; background: #f3f4f6; padding: 15px; border-radius: 12px; }
         .cap-item { font-size: 0.85rem; display: flex; align-items: center; gap: 8px; font-weight: 700; cursor: pointer; }
         .feedback { display: none; padding: 15px; background: #f3f4f6; border-radius: 10px; margin: 15px 0; border-left: 5px solid var(--primary); font-size: 0.9rem; }
@@ -80,7 +84,7 @@
         <div id="question-text" style="font-weight:800; margin-bottom:20px; font-size:1.1rem; text-align:left;"></div>
         <div id="options-container"></div>
         <div id="feedback" class="feedback"></div>
-        <button id="btn-next" style="display:none;" onclick="proxima()">Avançar</button>
+        <button id="btn-next" style="display:none;" onclick="confirmarResposta()">Confirmar Resposta</button>
     </div>
 
     <div id="screen-final" class="screen">
@@ -99,12 +103,14 @@
     let CONFIG = { banco: [], ativos: "", escolha: "Não" };
     let aluno = {};
     let jogo = { banco: [], atual: 0, acertos: 0, erros: 0, idsErrados: [], inicio: 0, caps: "", maxChances: 0, chancesRestantes: 0 };
+    
+    // Variáveis de controle para permitir a mudança de resposta
+    let estadoAtual = { respondido: false, escolha: null, divSelecionada: null };
 
     document.getElementById('game-mode').addEventListener('change', function() {
         document.getElementById('area-chances').style.display = this.value === 'Sobrevivencia' ? 'block' : 'none';
     });
 
-    // === NOVO MÉTODO (SEM CALLBACK, SEM ERRO GOOGLE IS NOT DEFINED) ===
     async function fetchSheet(nomeAba) {
         const url = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:json&headers=1&sheet=${nomeAba}`;
         const response = await fetch(url);
@@ -196,6 +202,9 @@
     }
 
     function render() {
+        // Resetamos o estado da nova questão
+        estadoAtual = { respondido: false, escolha: null, divSelecionada: null };
+        
         const q = jogo.banco[jogo.atual];
         document.getElementById('hud-left').innerText = `Questão ${jogo.atual + 1} de ${jogo.banco.length}`;
         
@@ -213,7 +222,8 @@
             const d = document.createElement('div'); 
             d.className = 'option'; 
             d.innerText = optText;
-            d.onclick = () => validar(index + 1, d, q); 
+            // Chama a função de selecionar
+            d.onclick = () => selecionarOpcao(index + 1, d); 
             cont.appendChild(d);
         });
         
@@ -221,30 +231,53 @@
         
         const btn = document.getElementById('btn-next');
         btn.style.display = 'none';
-        btn.innerText = "Avançar";
-        btn.className = "";
-        btn.onclick = proxima;
     }
 
-    function validar(escolha, divOpcao, q) {
-        if(document.querySelector('.option.disabled')) return; 
+    // Apenas seleciona (pode mudar de ideia)
+    function selecionarOpcao(escolhaIndex, divElement) {
+        if (estadoAtual.respondido) return; // Se já clicou em Confirmar, trava.
+
+        // Limpa a formatação de todas as opções
+        document.querySelectorAll('.option').forEach(o => o.classList.remove('selected'));
+        
+        // Destaca a opção clicada
+        divElement.classList.add('selected');
+        
+        // Guarda na memória a escolha
+        estadoAtual.escolha = escolhaIndex;
+        estadoAtual.divSelecionada = divElement;
+
+        // Exibe o botão de Confirmar
+        const btn = document.getElementById('btn-next');
+        btn.innerText = "Confirmar Resposta";
+        btn.className = "";
+        btn.onclick = confirmarResposta;
+        btn.style.display = 'block';
+    }
+
+    // Confirma e avalia
+    function confirmarResposta() {
+        if (!estadoAtual.escolha) return; // Prevenção
+        
+        estadoAtual.respondido = true; // Trava a tela para não mudar mais
         document.querySelectorAll('.option').forEach(o => o.classList.add('disabled'));
         
+        const q = jogo.banco[jogo.atual];
         const respostaReal = parseInt(q.correta) - q.txt.length - parseInt(q.id);
-        const acertou = (escolha === respostaReal);
+        const acertou = (estadoAtual.escolha === respostaReal);
 
         if(jogo.modo === 'Maratona') {
-            divOpcao.classList.add('selected'); 
+            // Modo Maratona: Mantém o azul, não mostra certo/errado na hora
             if(acertou) jogo.acertos++; else { jogo.erros++; jogo.idsErrados.push(q.id); }
-            document.getElementById('btn-next').style.display = 'block';
+            prepararBotaoProxima("Próxima Questão");
             
         } else if (jogo.modo === 'Sobrevivencia') {
             if(acertou) { 
-                divOpcao.classList.add('correct'); 
+                estadoAtual.divSelecionada.classList.add('correct'); 
                 jogo.acertos++; 
-                document.getElementById('btn-next').style.display = 'block';
+                prepararBotaoProxima("Próxima Questão");
             } else { 
-                divOpcao.classList.add('wrong'); 
+                estadoAtual.divSelecionada.classList.add('wrong'); 
                 jogo.erros++; 
                 jogo.chancesRestantes--;
                 
@@ -256,26 +289,34 @@
                 }
 
                 if(jogo.chancesRestantes <= 0) {
-                    const btn = document.getElementById('btn-next');
-                    btn.innerText = "Fim de Jogo - Ver Resultado";
-                    btn.className = "btn-danger";
-                    btn.onclick = () => finalizar(true); 
-                    btn.style.display = 'block';
+                    prepararBotaoProxima("Fim de Jogo - Ver Resultado", true);
                 } else {
-                    document.getElementById('btn-next').style.display = 'block';
+                    prepararBotaoProxima("Próxima Questão");
                 }
             }
         } else {
-            if(acertou) { divOpcao.classList.add('correct'); jogo.acertos++; }
-            else { 
-                divOpcao.classList.add('wrong'); jogo.erros++; 
+            // Modo Revisão
+            if(acertou) { 
+                estadoAtual.divSelecionada.classList.add('correct'); 
+                jogo.acertos++; 
+            } else { 
+                estadoAtual.divSelecionada.classList.add('wrong'); 
+                jogo.erros++; 
                 if(q.exp) {
                     document.getElementById('feedback').innerText = "📖 " + q.exp; 
                     document.getElementById('feedback').style.display = 'block'; 
                 }
             }
-            document.getElementById('btn-next').style.display = 'block';
+            prepararBotaoProxima("Próxima Questão");
         }
+    }
+
+    // Auxiliar para alterar a ação do botão
+    function prepararBotaoProxima(texto, isGameOver = false) {
+        const btn = document.getElementById('btn-next');
+        btn.innerText = texto;
+        if(isGameOver) btn.className = "btn-danger";
+        btn.onclick = () => isGameOver ? finalizar(true) : proxima();
     }
 
     function proxima() {
@@ -313,9 +354,15 @@
         if(jogo.modo === 'Maratona' && !isGameOver) {
             document.getElementById('msg-envio').style.display = 'block';
             const payload = { 
-                nome: aluno.nome, sobrenome: aluno.sobre, turma: aluno.turma, turno: aluno.turno, 
-                capitulos: jogo.caps, acertos: jogo.acertos, erros: jogo.erros, 
-                idsErrados: jogo.idsErrados, tempo: tempoSegundos 
+                nome: aluno.nome, 
+                sobrenome: aluno.sobre, 
+                turma: aluno.turma, 
+                turno: aluno.turno, 
+                capitulos: "'" + jogo.caps, // O apóstrofo previne que o Google transforme em data
+                acertos: jogo.acertos, 
+                erros: jogo.erros, 
+                idsErrados: jogo.idsErrados, 
+                tempo: tempoSegundos 
             };
             fetch(SCRIPT_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify(payload) });
         }
