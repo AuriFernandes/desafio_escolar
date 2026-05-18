@@ -75,61 +75,71 @@
     let CONFIG = { banco: [] };
     let aluno = {}, jogo = { banco: [], atual: 0, acertos: 0, erros: 0, idsErrados: [], inicio: 0, caps: "" };
 
-    async function load() {
-        const base = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:json&headers=1&sheet=`;
-        
-        // Usamos JSONP para máxima compatibilidade, mesmo hospedado
-        const fetchGoogleData = (sheetName) => {
-            return new Promise((resolve) => {
-                const callbackName = 'jsonp_cb_' + Math.round(100000 * Math.random());
-                const script = document.createElement('script');
-                window[callbackName] = (data) => {
-                    resolve(data);
-                    script.remove();
-                    delete window[callbackName];
-                };
-                script.src = `${base}${sheetName}&tqx=responseHandler:${callbackName}`;
-                document.body.appendChild(script);
-            });
-        };
-
-        try {
-            const jsonC = await fetchGoogleData("Configuracao");
-            let ativos = "", escolha = "Não", storage = "quiz_default";
+  async function load() {
+    // Pega o ID da URL ou usa o padrão
+    const SPREADSHEET_ID = new URLSearchParams(window.location.search).get('id') || '1loxsFbL29guiBUY16GyL7bq9WiL3RyBeMKVnDBC2LKs';
+    const base = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:json&headers=1&sheet=`;
+    
+    // FUNÇÃO QUE RESOLVE O PROBLEMA DE SINCRONIZAÇÃO (JSONP)
+    const buscarDadosNoGoogle = (nomeAba) => {
+        return new Promise((resolve) => {
+            const nomeCallback = 'callback_' + Math.round(100000 * Math.random());
+            const script = document.createElement('script');
             
-            jsonC.table.rows.forEach(r => { 
-                if(!r.c || !r.c[0]) return;
-                const k = r.c[0].v, v = r.c[1] ? r.c[1].v : "";
-                if(k === 'capitulosAtivos') ativos = String(v);
-                if(k === 'escolhaPeloAluno') escolha = String(v);
-                if(k === 'chaveLocalStorage') storage = String(v);
-            });
+            window[nomeCallback] = (data) => {
+                resolve(data);
+                script.remove();
+                delete window[nomeCallback];
+            };
 
-            const jsonQ = await fetchGoogleData("Questoes");
-            jsonQ.table.rows.forEach(r => {
-                if(!r.c || !r.c[0]) return;
-                CONFIG.banco.push({ 
-                    id: r.c[0].v, txt: r.c[1].v, 
-                    opts: [r.c[2]?.v, r.c[3]?.v, r.c[4]?.v, r.c[5]?.v], 
-                    correta: r.c[6]?.v, exp: r.c[7]?.v, cap: r.c[9]?.v 
-                });
-            });
+            script.src = `${base}${nomeAba}&tqx=responseHandler:${nomeCallback}`;
+            document.body.appendChild(script);
+        });
+    };
 
-            if(escolha === "Sim") {
-                document.getElementById('area-capitulos').style.display = 'block';
-                const caps = [...new Set(CONFIG.banco.map(q => q.cap))].sort((a,b) => a-b);
-                const lista = document.getElementById('lista-capitulos');
-                caps.forEach(c => {
-                    if(c) lista.innerHTML += `<label class="cap-item"><input type="checkbox" class="cap-check" value="${c}" checked> Cap. ${c}</label>`;
-                });
-            }
-            CONFIG.ativos = ativos; CONFIG.escolha = escolha; CONFIG.storage = storage;
-            show('screen-register');
-        } catch(e) { 
-            console.error(e);
-            document.getElementById('screen-loading').innerHTML = "<h1>Erro na Conexão 📡</h1><p>Verifique a internet e a planilha.</p>";
+    try {
+        // 1. Carrega Configuração
+        const jsonC = await buscarDadosNoGoogle("Configuracao");
+        let ativos = "", escolha = "Não", storage = "quiz_default";
+        
+        jsonC.table.rows.forEach(r => { 
+            if(!r.c || !r.c[0]) return;
+            const k = r.c[0].v, v = r.c[1] ? r.c[1].v : "";
+            if(k === 'capitulosAtivos') ativos = String(v);
+            if(k === 'escolhaPeloAluno') escolha = String(v);
+            if(k === 'chaveLocalStorage') storage = String(v);
+        });
+
+        // 2. Carrega Questões
+        const jsonQ = await buscarDadosNoGoogle("Questoes");
+        jsonQ.table.rows.forEach(r => {
+            if(!r.c || !r.c[0]) return;
+            CONFIG.banco.push({ 
+                id: r.c[0].v, txt: r.c[1].v, 
+                opts: [r.c[2]?.v, r.c[3]?.v, r.c[4]?.v, r.c[5]?.v], 
+                correta: r.c[6]?.v, exp: r.c[7]?.v, cap: r.c[9]?.v 
+            });
+        });
+
+        CONFIG.ativos = ativos; CONFIG.escolha = escolha; CONFIG.storage = storage;
+        
+        // Renderiza os capítulos se a opção for "Sim"
+        if(escolha === "Sim") {
+            document.getElementById('area-capitulos').style.display = 'block';
+            const caps = [...new Set(CONFIG.banco.map(q => q.cap))].sort((a,b) => a-b);
+            const lista = document.getElementById('lista-capitulos');
+            lista.innerHTML = "";
+            caps.forEach(c => {
+                if(c) lista.innerHTML += `<label class="cap-item"><input type="checkbox" class="cap-check" value="${c}" checked> Cap. ${c}</label>`;
+            });
         }
+
+        show('screen-register'); // Libera a tela de registro
+    } catch(e) { 
+        console.error("Erro no carregamento:", e);
+        document.getElementById('screen-loading').innerHTML = "<h1>Erro de Ligação 📡</h1><p>Verifique se a planilha está pública.</p>";
     }
+}
 
     function iniciar() {
         aluno = { 
