@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Desafio Escolar Pro</title>
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;900&display=swap" rel="stylesheet">
+    <style>
+        :root { --primary: #4f46e5; --secondary: #10b981; --bg: #f9fafb; --text: #111827; --wrong: #ef4444; }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Nunito', sans-serif; }
+        body { background: var(--bg); color: var(--text); display: flex; justify-content: center; padding: 15px; }
+        .app-container { width: 100%; max-width: 550px; background: white; border-radius: 20px; padding: 25px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); }
+        .screen { display: none; flex-direction: column; }
+        .screen.active { display: flex; }
+        h1 { text-align: center; color: var(--primary); margin-bottom: 20px; font-weight: 900; }
+        .form-group { margin-bottom: 12px; }
+        label { display: block; font-weight: 700; font-size: 0.9rem; margin-bottom: 5px; color: #4b5563; }
+        input, select { width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 10px; font-size: 1rem; outline: none; }
+        button { background: var(--primary); color: white; border: none; padding: 15px; border-radius: 12px; font-weight: 700; cursor: pointer; margin-top: 10px; transition: 0.2s; }
+        button:active { transform: scale(0.98); }
+        .option { background: #fff; border: 2px solid #e5e7eb; padding: 15px; border-radius: 12px; margin-bottom: 10px; cursor: pointer; font-weight: 700; text-align: left; }
+        .option.selected { border-color: var(--primary); background: #eef2ff; }
+        .option.correct { border-color: var(--secondary); background: #ecfdf5; color: #065f46; }
+        .option.wrong { border-color: var(--wrong); background: #fef2f2; color: #991b1b; }
+        .chapter-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 10px 0; background: #f3f4f6; padding: 15px; border-radius: 12px; }
+        .cap-item { font-size: 0.85rem; display: flex; align-items: center; gap: 5px; font-weight: 700; }
+        .feedback { display: none; padding: 15px; background: #f3f4f6; border-radius: 10px; margin: 15px 0; border-left: 5px solid var(--primary); text-align: left; }
+    </style>
+</head>
+<body>
+<div class="app-container">
+    <div id="screen-loading" class="screen active"><h1>📡 Sincronizando...</h1></div>
+
+    <div id="screen-register" class="screen">
+        <h1 id="ui-title">Desafio</h1>
+        <div class="form-group"><label>Nome:</label><input type="text" id="reg-nome"></div>
+        <div class="form-group"><label>Sobrenome:</label><input type="text" id="reg-sobre"></div>
+        <div class="form-group"><label>Série/Turma:</label><input type="text" id="reg-turma"></div>
+        <div class="form-group">
+            <label>Turno:</label>
+            <select id="reg-turno"><option value="Manhã">Manhã</option><option value="Tarde">Tarde</option><option value="Noite">Noite</option></select>
+        </div>
+        <div id="area-capitulos" style="display:none;"><label>Filtrar Capítulos:</label><div id="lista-capitulos" class="chapter-grid"></div></div>
+        <div class="form-group">
+            <label>Modo:</label>
+            <select id="game-mode">
+                <option value="Maratona">🏃‍♂️ Maratona (Avaliativo)</option>
+                <option value="Sobrevivencia">❤️ Sobrevivência</option>
+                <option value="Revisao">🔄 Revisão</option>
+            </select>
+        </div>
+        <button onclick="iniciar()">Entrar no Desafio</button>
+    </div>
+
+    <div id="screen-quiz" class="screen">
+        <div id="question-text" style="font-weight:800; margin-bottom:20px; font-size:1.1rem; text-align:left;"></div>
+        <div id="options-container"></div>
+        <div id="feedback" class="feedback"></div>
+        <button id="btn-next" style="display:none;" onclick="proxima()">Avançar</button>
+    </div>
+
+    <div id="screen-final" class="screen">
+        <h1 id="final-status">Fim!</h1>
+        <div id="resumo-final" style="margin: 20px 0; font-weight: 700;"></div>
+        <button onclick="location.reload()">Início</button>
+    </div>
+</div>
+
+<script>
+    const urlParams = new URLSearchParams(window.location.search);
+    // Tenta pegar o ID da URL, se não tiver, usa o seu padrão
+    const SPREADSHEET_ID = urlParams.get('id') || '1loxsFbL29guiBUY16GyL7bq9WiL3RyBeMKVnDBC2LKs';
+    const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbynRPe6BcA7KnwEuFYCDnQbXkHMCmB8nYNOQ-YLJZNUe9sOYe9D8lsksAsgrZAE_6TT/exec';
+
+    let CONFIG = { banco: [] };
+    let aluno = {}, jogo = { banco: [], atual: 0, acertos: 0, erros: 0, idsErrados: [], inicio: 0, caps: "" };
+
+    async function load() {
+        const base = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:json&headers=1&sheet=`;
+        
+        // Usamos JSONP para máxima compatibilidade, mesmo hospedado
+        const fetchGoogleData = (sheetName) => {
+            return new Promise((resolve) => {
+                const callbackName = 'jsonp_cb_' + Math.round(100000 * Math.random());
+                const script = document.createElement('script');
+                window[callbackName] = (data) => {
+                    resolve(data);
+                    script.remove();
+                    delete window[callbackName];
+                };
+                script.src = `${base}${sheetName}&tqx=responseHandler:${callbackName}`;
+                document.body.appendChild(script);
+            });
+        };
+
+        try {
+            const jsonC = await fetchGoogleData("Configuracao");
+            let ativos = "", escolha = "Não", storage = "quiz_default";
+            
+            jsonC.table.rows.forEach(r => { 
+                if(!r.c || !r.c[0]) return;
+                const k = r.c[0].v, v = r.c[1] ? r.c[1].v : "";
+                if(k === 'capitulosAtivos') ativos = String(v);
+                if(k === 'escolhaPeloAluno') escolha = String(v);
+                if(k === 'chaveLocalStorage') storage = String(v);
+            });
+
+            const jsonQ = await fetchGoogleData("Questoes");
+            jsonQ.table.rows.forEach(r => {
+                if(!r.c || !r.c[0]) return;
+                CONFIG.banco.push({ 
+                    id: r.c[0].v, txt: r.c[1].v, 
+                    opts: [r.c[2]?.v, r.c[3]?.v, r.c[4]?.v, r.c[5]?.v], 
+                    correta: r.c[6]?.v, exp: r.c[7]?.v, cap: r.c[9]?.v 
+                });
+            });
+
+            if(escolha === "Sim") {
+                document.getElementById('area-capitulos').style.display = 'block';
+                const caps = [...new Set(CONFIG.banco.map(q => q.cap))].sort((a,b) => a-b);
+                const lista = document.getElementById('lista-capitulos');
+                caps.forEach(c => {
+                    if(c) lista.innerHTML += `<label class="cap-item"><input type="checkbox" class="cap-check" value="${c}" checked> Cap. ${c}</label>`;
+                });
+            }
+            CONFIG.ativos = ativos; CONFIG.escolha = escolha; CONFIG.storage = storage;
+            show('screen-register');
+        } catch(e) { 
+            console.error(e);
+            document.getElementById('screen-loading').innerHTML = "<h1>Erro na Conexão 📡</h1><p>Verifique a internet e a planilha.</p>";
+        }
+    }
+
+    function iniciar() {
+        aluno = { 
+            nome: document.getElementById('reg-nome').value, 
+            sobre: document.getElementById('reg-sobre').value, 
+            turma: document.getElementById('reg-turma').value, 
+            turno: document.getElementById('reg-turno').value 
+        };
+        if(!aluno.nome || !aluno.turma) return alert("Preencha Nome e Turma!");
+
+        let alvos = [];
+        if(CONFIG.escolha === "Sim") {
+            document.querySelectorAll('.cap-check:checked').forEach(i => alvos.push(Number(i.value)));
+        } else {
+            alvos = CONFIG.ativos.split(',').map(Number);
+        }
+
+        jogo.modo = document.getElementById('game-mode').value;
+        jogo.banco = CONFIG.banco.filter(q => alvos.includes(Number(q.cap))).sort(() => Math.random() - 0.5);
+        if(jogo.banco.length === 0) return alert("Nenhuma questão encontrada para os capítulos selecionados.");
+        
+        jogo.inicio = Date.now(); jogo.caps = alvos.join(",");
+        show('screen-quiz'); render();
+    }
+
+    function render() {
+        const q = jogo.banco[jogo.atual];
+        document.getElementById('question-text').innerText = q.txt;
+        const cont = document.getElementById('options-container'); cont.innerHTML = '';
+        q.opts.forEach((o, i) => { if(o) {
+            const d = document.createElement('div'); d.className = 'option'; d.innerText = o;
+            d.onclick = () => validar(i + 1, d, q); cont.appendChild(d);
+        }});
+        document.getElementById('feedback').style.display = 'none';
+        document.getElementById('btn-next').style.display = 'none';
+    }
+
+    function validar(esc, d, q) {
+        if(document.querySelector('.option.disabled')) return;
+        document.querySelectorAll('.option').forEach(o => o.classList.add('disabled'));
+        
+        const real = parseInt(q.correta) - q.txt.length - parseInt(q.id);
+        
+        if(jogo.modo === 'Maratona') {
+            d.classList.add('selected');
+            if(esc === real) jogo.acertos++; else { jogo.erros++; jogo.idsErrados.push(q.id); }
+        } else {
+            if(esc === real) { d.classList.add('correct'); jogo.acertos++; }
+            else { 
+                d.classList.add('wrong'); jogo.erros++; 
+                document.getElementById('feedback').innerText = "💡 " + q.exp; 
+                document.getElementById('feedback').style.display = 'block'; 
+            }
+        }
+        document.getElementById('btn-next').style.display = 'block';
+    }
+
+    function proxima() {
+        jogo.atual++;
+        if(jogo.atual < jogo.banco.length) render(); else finalizar();
+    }
+
+    function finalizar() {
+        show('screen-final');
+        const tempo = Math.floor((Date.now() - jogo.inicio) / 1000);
+        document.getElementById('resumo-final').innerHTML = `Acertos: ${jogo.acertos}<br>Erros: ${jogo.erros}<br>Tempo: ${tempo}s`;
+        
+        if(jogo.modo === 'Maratona') {
+            const p = { 
+                nome: aluno.nome, sobrenome: aluno.sobre, turma: aluno.turma, turno: aluno.turno, 
+                capitulos: jogo.caps, acertos: jogo.acertos, erros: jogo.erros, 
+                idsErrados: jogo.idsErrados, tempo: tempo 
+            };
+            fetch(SCRIPT_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify(p) });
+        }
+    }
+
+    function show(id) { 
+        document.querySelectorAll('.screen').forEach(s => s.classList.remove('active')); 
+        document.getElementById(id).classList.add('active'); 
+    }
+    load();
+</script>
+</body>
+</html>
