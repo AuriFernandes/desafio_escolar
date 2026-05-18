@@ -75,28 +75,29 @@
     let CONFIG = { banco: [] };
     let aluno = {}, jogo = { banco: [], atual: 0, acertos: 0, erros: 0, idsErrados: [], inicio: 0, caps: "" };
 
- async function load() {
+async function load() {
     const SPREADSHEET_ID = new URLSearchParams(window.location.search).get('id') || '1loxsFbL29guiBUY16GyL7bq9WiL3RyBeMKVnDBC2LKs';
     const base = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:json&headers=1&sheet=`;
     
     const buscarDadosNoGoogle = (nomeAba) => {
         return new Promise((resolve, reject) => {
-            const nomeCallback = 'callback_' + Math.round(100000 * Math.random());
-            const script = document.createElement('script');
+            // Criamos um nome único para o callback
+            const callbackName = 'callback_' + Math.round(100000 * Math.random());
             
-            // Este é o segredo: definimos um objeto "google" falso para capturar os dados
-            window.google = window.google || {};
-            window.google.visualization = window.google.visualization || {};
-            window.google.visualization.Query = window.google.visualization.Query || {};
-            
-            // A Google vai chamar esta função interna
-            window.google.visualization.Query.setResponse = (data) => {
+            // O SEGREDO: Criamos a função que o Google vai tentar chamar
+            // Isso evita o erro "google is not defined"
+            window[callbackName] = (data) => {
                 resolve(data);
-                script.remove();
+                delete window[callbackName];
+                document.getElementById(scriptId).remove();
             };
 
-            script.src = `${base}${nomeAba}`; // Sem o parâmetro de callback manual, deixamos o padrão da Google
-            script.onerror = () => reject();
+            const scriptId = 'google_script_' + nomeAba;
+            const script = document.createElement('script');
+            script.id = scriptId;
+            // Forçamos o Google a responder para a nossa função específica
+            script.src = `${base}${nomeAba}&tqx=responseHandler:${callbackName}`;
+            script.onerror = () => reject(new Error("Falha ao carregar " + nomeAba));
             document.body.appendChild(script);
         });
     };
@@ -106,24 +107,28 @@
         const jsonC = await buscarDadosNoGoogle("Configuracao");
         let ativos = "", escolha = "Não", storage = "quiz_default";
         
-        jsonC.table.rows.forEach(r => { 
-            if(!r.c || !r.c[0]) return;
-            const k = r.c[0].v, v = r.c[1] ? r.c[1].v : "";
-            if(k === 'capitulosAtivos') ativos = String(v);
-            if(k === 'escolhaPeloAluno') escolha = String(v);
-            if(k === 'chaveLocalStorage') storage = String(v);
-        });
+        if (jsonC && jsonC.table) {
+            jsonC.table.rows.forEach(r => { 
+                if(!r.c || !r.c[0]) return;
+                const k = r.c[0].v, v = r.c[1] ? r.c[1].v : "";
+                if(k === 'capitulosAtivos') ativos = String(v);
+                if(k === 'escolhaPeloAluno') escolha = String(v);
+                if(k === 'chaveLocalStorage') storage = String(v);
+            });
+        }
 
         // 2. Carrega Questões
         const jsonQ = await buscarDadosNoGoogle("Questoes");
-        jsonQ.table.rows.forEach(r => {
-            if(!r.c || !r.c[0]) return;
-            CONFIG.banco.push({ 
-                id: r.c[0].v, txt: r.c[1].v, 
-                opts: [r.c[2]?.v, r.c[3]?.v, r.c[4]?.v, r.c[5]?.v], 
-                correta: r.c[6]?.v, exp: r.c[7]?.v, cap: r.c[9]?.v 
+        if (jsonQ && jsonQ.table) {
+            jsonQ.table.rows.forEach(r => {
+                if(!r.c || !r.c[0]) return;
+                CONFIG.banco.push({ 
+                    id: r.c[0].v, txt: r.c[1].v, 
+                    opts: [r.c[2]?.v, r.c[3]?.v, r.c[4]?.v, r.c[5]?.v], 
+                    correta: r.c[6]?.v, exp: r.c[7]?.v, cap: r.c[9]?.v 
+                });
             });
-        });
+        }
 
         CONFIG.ativos = ativos; CONFIG.escolha = escolha; CONFIG.storage = storage;
         
@@ -138,13 +143,12 @@
             });
         }
 
-        show('screen-register');
+        show('screen-register'); 
     } catch(e) { 
-        console.error("Erro:", e);
-        document.getElementById('screen-loading').innerHTML = "<h1>Erro de Ligação 📡</h1><p>Planilha não encontrada ou privada.</p>";
+        console.error("Erro detalhado:", e);
+        document.getElementById('screen-loading').innerHTML = "<h1>Erro de Ligação 📡</h1><p>Verifique se a planilha está pública (Qualquer pessoa com o link).</p>";
     }
 }
-
     function iniciar() {
         aluno = { 
             nome: document.getElementById('reg-nome').value, 
