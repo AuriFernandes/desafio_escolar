@@ -6,17 +6,12 @@
     <title>Desafio Escolar Pro</title>
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;900&display=swap" rel="stylesheet">
     <style>
-        /* === ESTILOS BASE === */
         :root { --primary: #4f46e5; --secondary: #10b981; --bg: #f9fafb; --text: #111827; --wrong: #ef4444; --alert: #f59e0b; }
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Nunito', sans-serif; }
         body { background: var(--bg); color: var(--text); display: flex; justify-content: center; padding: 15px; }
         .app-container { width: 100%; max-width: 550px; background: white; border-radius: 20px; padding: 25px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); }
-        
-        /* === TELAS === */
         .screen { display: none; flex-direction: column; }
         .screen.active { display: flex; }
-        
-        /* === COMPONENTES UI === */
         h1 { text-align: center; color: var(--primary); margin-bottom: 20px; font-weight: 900; }
         .form-group { margin-bottom: 12px; }
         label { display: block; font-weight: 700; font-size: 0.9rem; margin-bottom: 5px; color: #4b5563; }
@@ -25,16 +20,12 @@
         button { background: var(--primary); color: white; border: none; padding: 15px; border-radius: 12px; font-weight: 700; cursor: pointer; margin-top: 10px; transition: 0.2s; }
         button:active { transform: scale(0.98); }
         .btn-danger { background: var(--wrong); }
-        
-        /* === QUESTÕES === */
         .hud { display: flex; justify-content: space-between; font-weight: 800; color: #6b7280; font-size: 0.9rem; margin-bottom: 15px; }
         .option { background: #fff; border: 2px solid #e5e7eb; padding: 15px; border-radius: 12px; margin-bottom: 10px; cursor: pointer; font-weight: 700; text-align: left; transition: 0.2s; }
         .option.selected { border-color: var(--primary); background: #eef2ff; }
         .option.correct { border-color: var(--secondary); background: #ecfdf5; color: #065f46; }
         .option.wrong { border-color: var(--wrong); background: #fef2f2; color: #991b1b; }
         .option.disabled { pointer-events: none; opacity: 0.8; }
-        
-        /* === EXTRAS === */
         .chapter-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 10px 0; background: #f3f4f6; padding: 15px; border-radius: 12px; }
         .cap-item { font-size: 0.85rem; display: flex; align-items: center; gap: 8px; font-weight: 700; cursor: pointer; }
         .feedback { display: none; padding: 15px; background: #f3f4f6; border-radius: 10px; margin: 15px 0; border-left: 5px solid var(--primary); font-size: 0.9rem; }
@@ -101,7 +92,6 @@
 </div>
 
 <script>
-    // === 1. VARIÁVEIS GLOBAIS DE ESTADO ===
     const urlParams = new URLSearchParams(window.location.search);
     const SPREADSHEET_ID = urlParams.get('id') || '1loxsFbL29guiBUY16GyL7bq9WiL3RyBeMKVnDBC2LKs';
     const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbynRPe6BcA7KnwEuFYCDnQbXkHMCmB8nYNOQ-YLJZNUe9sOYe9D8lsksAsgrZAE_6TT/exec';
@@ -110,12 +100,11 @@
     let aluno = {};
     let jogo = { banco: [], atual: 0, acertos: 0, erros: 0, idsErrados: [], inicio: 0, caps: "", maxChances: 0, chancesRestantes: 0 };
 
-    // === LÓGICA DE INTERFACE: Exibir seletor de chances ===
     document.getElementById('game-mode').addEventListener('change', function() {
         document.getElementById('area-chances').style.display = this.value === 'Sobrevivencia' ? 'block' : 'none';
     });
 
-    // === 2. FUNÇÃO DE LEITURA DO GOOGLE ===
+    // === NOVO MÉTODO (SEM CALLBACK, SEM ERRO GOOGLE IS NOT DEFINED) ===
     async function fetchSheet(nomeAba) {
         const url = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:json&headers=1&sheet=${nomeAba}`;
         const response = await fetch(url);
@@ -124,7 +113,6 @@
         return JSON.parse(jsonStr);
     }
 
-    // === 3. INICIALIZAÇÃO ===
     async function load() {
         try {
             const dataC = await fetchSheet("Configuracao");
@@ -167,11 +155,11 @@
             console.error("Erro no carregamento:", e);
             document.getElementById('screen-loading').innerHTML = `
                 <h1 style="color:var(--wrong)">Erro ❌</h1>
-                <p style="text-align:center">A planilha não foi encontrada ou não está pública.</p>`;
+                <p style="text-align:center">A planilha não foi encontrada ou não está pública.</p>
+                <p style="text-align:center; font-size:0.8rem; margin-top:10px;">ID procurado: ${SPREADSHEET_ID}</p>`;
         }
     }
 
-    // === 4. LÓGICA DO JOGO ===
     function iniciar() {
         aluno = { 
             nome: document.getElementById('reg-nome').value.trim(), 
@@ -192,7 +180,6 @@
 
         jogo.modo = document.getElementById('game-mode').value;
         
-        // Configura chances se for Sobrevivência
         if(jogo.modo === 'Sobrevivencia') {
             jogo.maxChances = parseInt(document.getElementById('sel-chances').value);
             jogo.chancesRestantes = jogo.maxChances;
@@ -212,7 +199,6 @@
         const q = jogo.banco[jogo.atual];
         document.getElementById('hud-left').innerText = `Questão ${jogo.atual + 1} de ${jogo.banco.length}`;
         
-        // Renderização específica de HUD para Sobrevivência
         if (jogo.modo === 'Sobrevivencia') {
             document.getElementById('hud-right').innerHTML = `<span class="chances-alert">⭐ ${jogo.chancesRestantes} Tentativas</span>`;
         } else {
@@ -269,19 +255,17 @@
                     document.getElementById('feedback').style.display = 'block'; 
                 }
 
-                // GAME OVER STATE
                 if(jogo.chancesRestantes <= 0) {
                     const btn = document.getElementById('btn-next');
                     btn.innerText = "Fim de Jogo - Ver Resultado";
                     btn.className = "btn-danger";
-                    btn.onclick = () => finalizar(true); // Aciona o final prematuro
+                    btn.onclick = () => finalizar(true); 
                     btn.style.display = 'block';
                 } else {
                     document.getElementById('btn-next').style.display = 'block';
                 }
             }
         } else {
-            // Modo Revisão
             if(acertou) { divOpcao.classList.add('correct'); jogo.acertos++; }
             else { 
                 divOpcao.classList.add('wrong'); jogo.erros++; 
@@ -326,7 +310,6 @@
 
         document.getElementById('resumo-final').innerHTML = htmlResumo;
         
-        // ENVIO GARANTIDO: Apenas se for Maratona E chegar no finalizar(). Game Over não envia.
         if(jogo.modo === 'Maratona' && !isGameOver) {
             document.getElementById('msg-envio').style.display = 'block';
             const payload = { 
