@@ -75,24 +75,28 @@
     let CONFIG = { banco: [] };
     let aluno = {}, jogo = { banco: [], atual: 0, acertos: 0, erros: 0, idsErrados: [], inicio: 0, caps: "" };
 
-  async function load() {
-    // Pega o ID da URL ou usa o padrão
+ async function load() {
     const SPREADSHEET_ID = new URLSearchParams(window.location.search).get('id') || '1loxsFbL29guiBUY16GyL7bq9WiL3RyBeMKVnDBC2LKs';
     const base = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:json&headers=1&sheet=`;
     
-    // FUNÇÃO QUE RESOLVE O PROBLEMA DE SINCRONIZAÇÃO (JSONP)
     const buscarDadosNoGoogle = (nomeAba) => {
-        return new Promise((resolve) => {
+        return new Promise((resolve, reject) => {
             const nomeCallback = 'callback_' + Math.round(100000 * Math.random());
             const script = document.createElement('script');
             
-            window[nomeCallback] = (data) => {
+            // Este é o segredo: definimos um objeto "google" falso para capturar os dados
+            window.google = window.google || {};
+            window.google.visualization = window.google.visualization || {};
+            window.google.visualization.Query = window.google.visualization.Query || {};
+            
+            // A Google vai chamar esta função interna
+            window.google.visualization.Query.setResponse = (data) => {
                 resolve(data);
                 script.remove();
-                delete window[nomeCallback];
             };
 
-            script.src = `${base}${nomeAba}&tqx=responseHandler:${nomeCallback}`;
+            script.src = `${base}${nomeAba}`; // Sem o parâmetro de callback manual, deixamos o padrão da Google
+            script.onerror = () => reject();
             document.body.appendChild(script);
         });
     };
@@ -123,7 +127,7 @@
 
         CONFIG.ativos = ativos; CONFIG.escolha = escolha; CONFIG.storage = storage;
         
-        // Renderiza os capítulos se a opção for "Sim"
+        // Renderiza os capítulos
         if(escolha === "Sim") {
             document.getElementById('area-capitulos').style.display = 'block';
             const caps = [...new Set(CONFIG.banco.map(q => q.cap))].sort((a,b) => a-b);
@@ -134,10 +138,10 @@
             });
         }
 
-        show('screen-register'); // Libera a tela de registro
+        show('screen-register');
     } catch(e) { 
-        console.error("Erro no carregamento:", e);
-        document.getElementById('screen-loading').innerHTML = "<h1>Erro de Ligação 📡</h1><p>Verifique se a planilha está pública.</p>";
+        console.error("Erro:", e);
+        document.getElementById('screen-loading').innerHTML = "<h1>Erro de Ligação 📡</h1><p>Planilha não encontrada ou privada.</p>";
     }
 }
 
